@@ -9,3 +9,17 @@ __pycache__/
 .DS_Store
 .vscode/  # プロジェクトごとの設定は含めない場合
 .code-workspace
+
+
+# テスト・カバレッジのキャッシュ
+.coverage
+.coverage.*
+coverage.json
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS固有のキャッシュ
+.DS_Store
+Thumbs.db

@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: poe-check
+        name: othello-app poe check
+        # ルート(GITHUB_LP)から、Othello_game 内の uv 環境と poe タスクを正しく呼び出す設定
+        entry: uv run --project Othello_game poe -C Othello_game check
+        language: system
+        pass_filenames: false
+        types: [python]

@@ -22,3 +22,17 @@ htmlcov
 
 # データベースのログや一時ファイル
 *.log
+
+
+# テスト・カバレッジのキャッシュ
+.coverage
+.coverage.*
+coverage.json
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS固有のキャッシュ
+.DS_Store
+Thumbs.db
