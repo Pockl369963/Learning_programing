@@ -40,6 +40,24 @@ plugins = [
     "pydantic.mypy"
 ]
 explicit_package_bases = true
-mypy_path = ["."]
+mypy_path = ["othello_app", "."]
 [tool.django-stubs]
-django_settings_module = "othello_app.config.settings"
+django_settings_module = "config.settings"
+
+
+[tool.pytest.ini_options]
+addopts = [
+    "-v",
+    "--cov-report=html",
+    "--cov-report=json",
+    "--cov=othello_app"
+]
+
+DJANGO_SETTINGS_MODULE = "config.settings"
+
+pythonpath = [
+    "othello_app"
+]
+
+# 3. テストコードを探すディレクトリを指定
+testpaths = ["othello_app/tests"]

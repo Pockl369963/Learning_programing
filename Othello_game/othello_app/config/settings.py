@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "othello_app",
+    "othello_web",
 ]
 
 MIDDLEWARE = [
