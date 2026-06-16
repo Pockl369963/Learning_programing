@@ -1,0 +1,43 @@
+[project]
+name = "othello-game"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "django==5.2",
+    "django-environ>=0.13.0",
+    "numpy==2.3.5",
+    "pydantic-settings>=2.14.1",
+    "torch==2.9.1",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "django-stubs[compatible-mypy]>=6.0.5",
+    "pip-audit>=2.10.1",
+    "poethepoet>=0.46.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
+    "pytest-django>=4.12.0",
+    "ruff>=0.15.17",
+]
+
+[tool.poe.tasks]
+format = "uv run ruff format ."
+lint = "uv run ruff check --fix ."
+type-check = "uv run mypy ."
+
+check = ["format", "lint", "type-check"]
+
+[tool.mypy]
+plugins = [
+    "mypy_django_plugin.main",
+    "pydantic.mypy"
+]
+explicit_package_bases = true
+mypy_path = ["."]
+[tool.django-stubs]
+django_settings_module = "othello_app.config.settings"
