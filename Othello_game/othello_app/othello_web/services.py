@@ -1,7 +1,7 @@
 import random
 from django.db import transaction
 from othello_web.models import GameSession, MatchHistory
-from model.othello_env import get_initial_board
+from model.othello_env import OthelloEnv
 
 MAX_MATCH_HISTORY = 10
 
@@ -18,7 +18,7 @@ def start_game(user, opponent: str) -> GameSession:
         opponent_type=opponent,
         status=GameSession.Status.PLAYING,
         user_color=user_color,
-        current_board=get_initial_board(),
+        current_board=OthelloEnv().get_initial_board(),
         current_turn=GameSession.Color.BLACK,
     )
     return session

@@ -4,7 +4,7 @@ from typing import List, Any
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from othello_web.models import GameSession, MatchHistory
-from model.othello_env import get_initial_board, PLAYER_BLACK
+from model.othello_env import OthelloEnv, PLAYER_BLACK
 
 # ====================================================================
 # Fixtures
@@ -20,7 +20,7 @@ def valid_user() -> User:
 @pytest.fixture
 def initial_board() -> List[List[int]]:
     """オセロの初期状態（8x8）の盤面データを提供するフィクスチャ"""
-    return get_initial_board()
+    return OthelloEnv().get_initial_board()
 
 
 # ====================================================================

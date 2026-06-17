@@ -14,7 +14,7 @@ from othello_web.services import (
     save_match_history,
     MAX_MATCH_HISTORY,
 )
-from model.othello_env import get_initial_board, PLAYER_BLACK, PLAYER_WHITE
+from model.othello_env import OthelloEnv, PLAYER_BLACK, PLAYER_WHITE
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def initial_board() -> List[List[int]]:
     Returns:
         List[List[int]]: 8x8の初期盤面リスト
     """
-    return get_initial_board()
+    return OthelloEnv().get_initial_board()
 
 
 @pytest.mark.django_db
