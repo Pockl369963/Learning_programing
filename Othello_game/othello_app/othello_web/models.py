@@ -31,34 +31,31 @@ def validate_board_format(value):
 
 
 class GameSession(models.Model):
-    # Choices定義
-    OPPONENT_CHOICES = [
-        ("ai", "AI"),
-        ("random", "Random"),
-    ]
+    class OpponentType(models.TextChoices):
+        AI = "ai", "AI"
+        RANDOM = "random", "Random"
 
-    STATUS_CHOICES = [
-        ("playing", "Playing"),
-        ("finished", "Finished"),
-        ("abandoned", "Abandoned"),
-    ]
+    class Status(models.TextChoices):
+        PLAYING = "playing", "Playing"
+        FINISHED = "finished", "Finished"
+        ABANDONED = "abandoned", "Abandoned"
 
-    COLOR_AND_TURN_CHOICES = [
-        (1, "Black"),
-        (-1, "White"),
-    ]
+    class Color(models.IntegerChoices):
+        BLACK = 1, "Black"
+        WHITE = -1, "White"
 
-    # フィールド定義
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    opponent_type = models.CharField(max_length=20, choices=OPPONENT_CHOICES)
-    user_color = models.IntegerField(choices=COLOR_AND_TURN_CHOICES)
+    opponent_type = models.CharField(max_length=20, choices=OpponentType.choices)
+    user_color = models.IntegerField(choices=Color.choices)
 
     # 盤面はJSONFieldを使用し、型と構造をカスタムバリデータで担保
     current_board = models.JSONField(validators=[validate_board_format])
 
-    current_turn = models.IntegerField(choices=COLOR_AND_TURN_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="playing")
+    current_turn = models.IntegerField(choices=Color.choices)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PLAYING
+    )
 
     # タイムスタンプ
     created_at = models.DateTimeField(auto_now_add=True)
@@ -69,22 +66,18 @@ class GameSession(models.Model):
 
 
 class MatchHistory(models.Model):
-    # Choices定義
-    OPPONENT_CHOICES = [
-        ("ai", "AI"),
-        ("random", "Random"),
-    ]
+    class Result(models.TextChoices):
+        WIN = "win", "Win"
+        LOSS = "loss", "Loss"
+        DRAW = "draw", "Draw"
 
-    RESULT_CHOICES = [
-        ("win", "Win"),
-        ("loss", "Loss"),
-        ("draw", "Draw"),
-    ]
+    MAX_MATCH_HISTORY = 10
 
-    # フィールド定義
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    opponent_type = models.CharField(max_length=20, choices=OPPONENT_CHOICES)
-    result = models.CharField(max_length=20, choices=RESULT_CHOICES)
+    opponent_type = models.CharField(
+        max_length=20, choices=GameSession.OpponentType.choices
+    )
+    result = models.CharField(max_length=20, choices=Result.choices)
 
     # タイムスタンプ
     played_at = models.DateTimeField(auto_now_add=True)

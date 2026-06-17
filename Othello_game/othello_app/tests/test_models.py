@@ -1,8 +1,10 @@
 import pytest
 import uuid
+from typing import List, Any
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from othello_web.models import GameSession, MatchHistory
+from model.othello_env import OthelloEnv, PLAYER_BLACK
 
 # ====================================================================
 # Fixtures
@@ -10,18 +12,15 @@ from othello_web.models import GameSession, MatchHistory
 
 
 @pytest.fixture
-def valid_user():
+def valid_user() -> User:
     """テスト用の有効なユーザーオブジェクトを提供するフィクスチャ"""
-    return User.objects.create_user(username="testuser", password="testpassword123")
+    return User.objects.create_user(username="testuser", password="testpassword123")  # nosec B106
 
 
 @pytest.fixture
-def initial_board():
+def initial_board() -> List[List[int]]:
     """オセロの初期状態（8x8）の盤面データを提供するフィクスチャ"""
-    board = [[0] * 8 for _ in range(8)]
-    board[3][3], board[4][4] = -1, -1  # 白
-    board[3][4], board[4][3] = 1, 1  # 黒
-    return board
+    return OthelloEnv().get_initial_board()
 
 
 # ====================================================================
@@ -30,18 +29,20 @@ def initial_board():
 
 
 @pytest.mark.django_db
-def test_gamesession_create_success(valid_user, initial_board):
+def test_gamesession_create_success(
+    valid_user: User, initial_board: List[List[int]]
+) -> None:
     """
     1. 正常系: 正しいパラメータでGameSessionが正常に作成・保存されること。
     UUIDの自動生成や、DateTimeFieldの自動設定(auto_now/add)も検証する。
     """
     session = GameSession(
         user=valid_user,
-        opponent_type="ai",
-        user_color=1,
+        opponent_type=GameSession.OpponentType.AI,
+        user_color=PLAYER_BLACK,
         current_board=initial_board,
-        current_turn=1,
-        status="playing",
+        current_turn=PLAYER_BLACK,
+        status=GameSession.Status.PLAYING,
     )
     session.full_clean()  # モデルレベルのバリデーションを実行
     session.save()
@@ -50,7 +51,7 @@ def test_gamesession_create_success(valid_user, initial_board):
     assert session.user == valid_user
     assert session.created_at is not None
     assert session.updated_at is not None
-    assert session.status == "playing"
+    assert session.status == GameSession.Status.PLAYING
 
 
 @pytest.mark.django_db
@@ -64,17 +65,19 @@ def test_gamesession_create_success(valid_user, initial_board):
         ),  # Choices定義外 ('playing', 'finished', 'abandoned' 以外)
     ],
 )
-def test_gamesession_invalid_choices(valid_user, initial_board, field, invalid_value):
+def test_gamesession_invalid_choices(
+    valid_user: User, initial_board: List[List[int]], field: str, invalid_value: Any
+) -> None:
     """
     2. 異常系 (Choice制約): 定義外のChoices値が設定された場合、ValidationErrorが発生すること。
     """
-    data = {
+    data: dict[str, Any] = {
         "user": valid_user,
-        "opponent_type": "ai",
-        "user_color": 1,
+        "opponent_type": GameSession.OpponentType.AI,
+        "user_color": PLAYER_BLACK,
         "current_board": initial_board,
-        "current_turn": 1,
-        "status": "playing",
+        "current_turn": PLAYER_BLACK,
+        "status": GameSession.Status.PLAYING,
     }
     data[field] = invalid_value
     session = GameSession(**data)
@@ -86,16 +89,16 @@ def test_gamesession_invalid_choices(valid_user, initial_board, field, invalid_v
 
 
 @pytest.mark.django_db
-def test_gamesession_null_constraints(initial_board):
+def test_gamesession_null_constraints(initial_board: List[List[int]]) -> None:
     """
     2. 異常系 (Null制約): 必須フィールド(user)が欠落している場合、ValidationErrorが発生すること。
     """
     session = GameSession(
-        opponent_type="ai",
-        user_color=1,
+        opponent_type=GameSession.OpponentType.AI,
+        user_color=PLAYER_BLACK,
         current_board=initial_board,
-        current_turn=1,
-        status="playing",
+        current_turn=PLAYER_BLACK,
+        status=GameSession.Status.PLAYING,
     )
 
     with pytest.raises(ValidationError) as excinfo:
@@ -107,20 +110,19 @@ def test_gamesession_null_constraints(initial_board):
 @pytest.mark.django_db
 @pytest.mark.parametrize("invalid_val", [0, 2, -2, 100])
 def test_gamesession_color_and_turn_boundary_validation(
-    valid_user, initial_board, invalid_val
-):
+    valid_user: User, initial_board: List[List[int]], invalid_val: int
+) -> None:
     """
     3. 境界値・データ型異常: user_color および current_turn に対して、
-    1(黒), -1(白) 以外の整数値を代入した際にバリデーションエラーになること。
-    ※モデル側で制約（ChoicesやValidators）が強制されているかを検証する。
+    許容されない整数値を代入した際にバリデーションエラーになること。
     """
     session = GameSession(
         user=valid_user,
-        opponent_type="ai",
+        opponent_type=GameSession.OpponentType.AI,
         user_color=invalid_val,  # 許容されない値
         current_board=initial_board,
         current_turn=invalid_val,  # 許容されない値
-        status="playing",
+        status=GameSession.Status.PLAYING,
     )
 
     with pytest.raises(ValidationError) as excinfo:
@@ -131,20 +133,18 @@ def test_gamesession_color_and_turn_boundary_validation(
 
 
 @pytest.mark.django_db
-def test_gamesession_invalid_current_board_type(valid_user):
+def test_gamesession_invalid_current_board_type(valid_user: User) -> None:
     """
-    3. 境界値・データ型異常: current_board に対して不正な型(例: 単なる文字列やシリアライズ不能なオブジェクト)
+    3. 境界値・データ型異常: current_board に対して不正な型
     を代入した場合、適切に弾かれる挙動を確認する。
-    ※ここではモデル側で「盤面は配列(リスト)でなければならない」というカスタムバリデーションを
-    実装する前提で、ValidationErrorを期待する設計としている。
     """
     session = GameSession(
         user=valid_user,
-        opponent_type="ai",
-        user_color=1,
+        opponent_type=GameSession.OpponentType.AI,
+        user_color=PLAYER_BLACK,
         current_board="This is not an 8x8 array",  # 不正なデータ型
-        current_turn=1,
-        status="playing",
+        current_turn=PLAYER_BLACK,
+        status=GameSession.Status.PLAYING,
     )
 
     with pytest.raises(ValidationError) as excinfo:
@@ -159,18 +159,22 @@ def test_gamesession_invalid_current_board_type(valid_user):
 
 
 @pytest.mark.django_db
-def test_matchhistory_create_success(valid_user):
+def test_matchhistory_create_success(valid_user: User) -> None:
     """
     1. 正常系: 正しいパラメータでMatchHistoryが正常に作成・保存されること。
     """
-    history = MatchHistory(user=valid_user, opponent_type="ai", result="win")
+    history = MatchHistory(
+        user=valid_user,
+        opponent_type=GameSession.OpponentType.AI,
+        result=MatchHistory.Result.WIN,
+    )
     history.full_clean()
     history.save()
 
     assert history.id is not None
     assert history.user == valid_user
     assert history.played_at is not None
-    assert history.result == "win"
+    assert history.result == MatchHistory.Result.WIN
 
 
 @pytest.mark.django_db
@@ -181,12 +185,18 @@ def test_matchhistory_create_success(valid_user):
         ("result", "surrender"),  # 'win', 'loss', 'draw' 以外
     ],
 )
-def test_matchhistory_invalid_choices(valid_user, field, invalid_value):
+def test_matchhistory_invalid_choices(
+    valid_user: User, field: str, invalid_value: Any
+) -> None:
     """
     2. 異常系 (Choice制約): MatchHistoryにおける定義外のChoices値が
     設定された場合、ValidationErrorが発生すること。
     """
-    data = {"user": valid_user, "opponent_type": "random", "result": "loss"}
+    data: dict[str, Any] = {
+        "user": valid_user,
+        "opponent_type": GameSession.OpponentType.RANDOM,
+        "result": MatchHistory.Result.LOSS,
+    }
     data[field] = invalid_value
     history = MatchHistory(**data)
 
@@ -197,12 +207,14 @@ def test_matchhistory_invalid_choices(valid_user, field, invalid_value):
 
 
 @pytest.mark.django_db
-def test_matchhistory_null_constraints():
+def test_matchhistory_null_constraints() -> None:
     """
     2. 異常系 (Null制約): MatchHistoryにおいて必須フィールド(user)が
     欠落している場合、ValidationErrorが発生すること。
     """
-    history = MatchHistory(opponent_type="ai", result="draw")
+    history = MatchHistory(
+        opponent_type=GameSession.OpponentType.AI, result=MatchHistory.Result.DRAW
+    )
 
     with pytest.raises(ValidationError) as excinfo:
         history.full_clean()
