@@ -12,7 +12,8 @@ from othello_web.services import (
     start_game,
     handle_abandoned_game,
     save_match_history,
-    MAX_MATCH_HISTORY,
+    surrender_game,
+    process_timeout_abandoned_games,
 )
 from model.othello_env import OthelloEnv, PLAYER_BLACK, PLAYER_WHITE
 
@@ -169,7 +170,7 @@ class TestOthelloServices:
             initial_board (List[List[int]]): 初期盤面
         """
         # Arrange
-        for _ in range(MAX_MATCH_HISTORY - 1):
+        for _ in range(MatchHistory.MAX_MATCH_HISTORY - 1):
             MatchHistory.objects.create(
                 user=test_user,
                 opponent_type=GameSession.OpponentType.AI,
@@ -191,7 +192,10 @@ class TestOthelloServices:
         )
 
         # Assert
-        assert MatchHistory.objects.filter(user=test_user).count() == MAX_MATCH_HISTORY
+        assert (
+            MatchHistory.objects.filter(user=test_user).count()
+            == MatchHistory.MAX_MATCH_HISTORY
+        )
 
     def test_save_match_history_eleventh_record(
         self, test_user: User, initial_board: List[List[int]]
@@ -205,7 +209,7 @@ class TestOthelloServices:
         """
         # Arrange
         histories: List[MatchHistory] = []
-        for _ in range(MAX_MATCH_HISTORY):
+        for _ in range(MatchHistory.MAX_MATCH_HISTORY):
             history = MatchHistory.objects.create(
                 user=test_user,
                 opponent_type=GameSession.OpponentType.AI,
@@ -230,7 +234,10 @@ class TestOthelloServices:
         )
 
         # Assert
-        assert MatchHistory.objects.filter(user=test_user).count() == MAX_MATCH_HISTORY
+        assert (
+            MatchHistory.objects.filter(user=test_user).count()
+            == MatchHistory.MAX_MATCH_HISTORY
+        )
 
         # 最古のレコードが削除されたことを確認
         assert not MatchHistory.objects.filter(id=oldest_history_id).exists()
@@ -244,3 +251,176 @@ class TestOthelloServices:
         assert latest_history is not None
         assert latest_history.opponent_type == GameSession.OpponentType.RANDOM
         assert latest_history.result == MatchHistory.Result.LOSS
+
+    # -------------------------------------------------------------------------
+    # 4. surrender_game
+    # -------------------------------------------------------------------------
+
+    def test_surrender_game_success(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """
+        正常系: 自分の進行中のゲームをサレンダー（投了）できること。
+        ステータスがFINISHEDになり、敗北(LOSS)履歴が保存される。
+        """
+        # Arrange
+        session: GameSession = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+
+        # Act
+        surrender_game(user=test_user, session_id=session.id)
+
+        # Assert
+        session.refresh_from_db()
+        assert session.status == GameSession.Status.FINISHED
+
+        history: Optional[MatchHistory] = (
+            MatchHistory.objects.filter(user=test_user).order_by("-played_at").first()
+        )
+        assert history is not None
+        assert history.result == MatchHistory.Result.LOSS
+
+    def test_surrender_game_invalid_state(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """
+        異常系: すでに終了したゲームをサレンダーしようとするとValueErrorが発生すること。
+        """
+        # Arrange
+        session: GameSession = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.FINISHED,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            ValueError, match="サレンダーできるのは進行中のゲームのみです"
+        ):
+            surrender_game(user=test_user, session_id=session.id)
+
+    def test_surrender_game_unauthorized(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """
+        異常系: 他人のゲームセッションをサレンダーしようとした場合、例外（非存在エラーなど）が発生すること。
+        """
+        # Arrange
+        other_user = User.objects.create_user(
+            username="other_user", password="password"
+        )  # nosec B106
+        session: GameSession = GameSession.objects.create(
+            user=other_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+
+        # Act & Assert
+        # 実装によってDoesNotExistやValueErrorが発生する想定。ここでは広めにキャッチするか、一般的なものを指定
+        with pytest.raises(Exception):
+            surrender_game(user=test_user, session_id=session.id)
+
+    # -------------------------------------------------------------------------
+    # 5. process_timeout_abandoned_games
+    # -------------------------------------------------------------------------
+
+    def test_process_timeout_abandoned_games(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """
+        正常系: 1時間以上操作がないPLAYING状態のゲームをABANDONEDに変更し、LOSS履歴を作成すること。
+        """
+        from datetime import timedelta
+        from django.utils import timezone
+
+        # Arrange
+        # タイムアウト対象 (2時間前に更新)
+        session_timeout = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+        # auto_now=True をバイパスして過去日時にする
+        old_time = timezone.now() - timedelta(hours=2)
+        GameSession.objects.filter(id=session_timeout.id).update(updated_at=old_time)
+
+        # タイムアウト対象外 (30分前に更新)
+        session_active = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+        recent_time = timezone.now() - timedelta(minutes=30)
+        GameSession.objects.filter(id=session_active.id).update(updated_at=recent_time)
+
+        # Act
+        processed_count = process_timeout_abandoned_games()
+
+        # Assert
+        assert processed_count == 1
+
+        session_timeout.refresh_from_db()
+        assert session_timeout.status == GameSession.Status.ABANDONED
+
+        session_active.refresh_from_db()
+        assert session_active.status == GameSession.Status.PLAYING
+
+        history: Optional[MatchHistory] = MatchHistory.objects.filter(
+            user=test_user
+        ).first()
+        assert history is not None
+        assert history.result == MatchHistory.Result.LOSS
+
+    def test_process_timeout_abandoned_games_exclude_finished(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """
+        正常系: すでにFINISHEDやABANDONEDになっている古いゲームはタイムアウトの処理対象外となること。
+        """
+        from datetime import timedelta
+        from django.utils import timezone
+
+        # Arrange
+        # 1時間以上前に更新されたが、すでに終了（FINISHED）しているゲーム
+        session_finished = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.FINISHED,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+        old_time = timezone.now() - timedelta(hours=2)
+        GameSession.objects.filter(id=session_finished.id).update(updated_at=old_time)
+
+        initial_history_count = MatchHistory.objects.count()
+
+        # Act
+        processed_count = process_timeout_abandoned_games()
+
+        # Assert
+        assert processed_count == 0
+
+        session_finished.refresh_from_db()
+        assert session_finished.status == GameSession.Status.FINISHED
+
+        # 誤って新たな敗北履歴が作成されていないことを確認
+        assert MatchHistory.objects.count() == initial_history_count
