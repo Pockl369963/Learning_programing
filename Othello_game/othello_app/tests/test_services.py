@@ -14,6 +14,9 @@ from othello_web.services import (
     save_match_history,
     surrender_game,
     process_timeout_abandoned_games,
+    process_move,
+    TurnConflictError,
+    InvalidMoveError,
 )
 from model.othello_env import OthelloEnv, PLAYER_BLACK, PLAYER_WHITE
 
@@ -424,3 +427,89 @@ class TestOthelloServices:
 
         # 誤って新たな敗北履歴が作成されていないことを確認
         assert MatchHistory.objects.count() == initial_history_count
+
+    # -------------------------------------------------------------------------
+    # 6. process_move (Issue 3: 排他制御とバリデーション)
+    # -------------------------------------------------------------------------
+
+    def test_process_move_success(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """正常系: 自分のターンで正しい合法手を打った場合、盤面とターンが更新されること。"""
+        # Arrange
+        session: GameSession = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+        # 黒の初期合法手の一つ (2, 3)
+        row, col = 2, 3
+
+        # Act
+        process_move(
+            user=test_user,
+            session_id=session.id,
+            row=row,
+            col=col,
+            expected_turn=PLAYER_BLACK,
+        )
+
+        # Assert
+        session.refresh_from_db()
+        assert session.current_board[row][col] == PLAYER_BLACK
+        assert session.current_turn == PLAYER_WHITE
+
+    def test_process_move_turn_conflict(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """異常系(排他制御): 期待するターンと実際のターンが異なる場合、TurnConflictError(409相当)が発生すること。"""
+        # Arrange
+        session: GameSession = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+        row, col = 2, 3
+
+        # Act & Assert
+        # 連打などで過去のターン(白)の状態でリクエストが来たケース
+        with pytest.raises(TurnConflictError):
+            process_move(
+                user=test_user,
+                session_id=session.id,
+                row=row,
+                col=col,
+                expected_turn=PLAYER_WHITE,  # 実際のターン(PLAYER_BLACK)と不一致
+            )
+
+    def test_process_move_invalid_move(
+        self, test_user: User, initial_board: List[List[int]]
+    ) -> None:
+        """異常系(バリデーション): 不正な座標に置こうとした場合、InvalidMoveError(400相当)が発生すること。"""
+        # Arrange
+        session: GameSession = GameSession.objects.create(
+            user=test_user,
+            opponent_type=GameSession.OpponentType.AI,
+            status=GameSession.Status.PLAYING,
+            user_color=PLAYER_BLACK,
+            current_board=initial_board,
+            current_turn=PLAYER_BLACK,
+        )
+        # (0, 0) は初期盤面では合法手ではない
+        row, col = 0, 0
+
+        # Act & Assert
+        with pytest.raises(InvalidMoveError):
+            process_move(
+                user=test_user,
+                session_id=session.id,
+                row=row,
+                col=col,
+                expected_turn=PLAYER_BLACK,
+            )
