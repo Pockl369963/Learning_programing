@@ -14,7 +14,7 @@ def env() -> OthelloEnv:
 
 @pytest.fixture
 def initial_board() -> List[List[int]]:
-    """初期状態の盤面を提供するフィクスチャ。"""
+    """初期状態の盤面を提供するフィクスチャ。盤面のテストのため一から定義"""
     board = [[0] * 8 for _ in range(8)]
     board[3][3], board[4][4] = -1, -1
     board[3][4], board[4][3] = 1, 1
