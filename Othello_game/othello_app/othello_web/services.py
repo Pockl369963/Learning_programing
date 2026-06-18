@@ -8,6 +8,18 @@ from othello_web.models import GameSession, MatchHistory
 from model.othello_env import OthelloEnv
 
 
+class TurnConflictError(Exception):
+    """リクエストされたターンと現在のセッションのターンが不一致の場合のエラー (HTTP 409相当)"""
+
+    pass
+
+
+class InvalidMoveError(Exception):
+    """オセロのルール上、置けない場所に石を置こうとした場合のエラー (HTTP 400相当)"""
+
+    pass
+
+
 @transaction.atomic
 def start_game(user: User, opponent: str) -> GameSession:
     """
@@ -135,5 +147,48 @@ def process_timeout_abandoned_games() -> int:
             )
 
         return processed_count
+    except DatabaseError:
+        raise
+
+
+@transaction.atomic
+def process_move(
+    user: User, session_id: uuid.UUID, row: int, col: int, expected_turn: int
+) -> GameSession:
+    """
+    ユーザーの手番を処理します。
+    排他制御（ターンの一致確認）とバリデーション（合法手判定）を行い、
+    盤面を更新してターンを相手に渡します。
+    """
+    try:
+        session = GameSession.objects.get(id=session_id, user=user)
+
+        if session.status != GameSession.Status.PLAYING:
+            raise ValueError("進行中のゲームではありません")
+
+        # 1. 排他制御 (Optimistic Locking)
+        if session.current_turn != expected_turn:
+            raise TurnConflictError(
+                f"ターンの不一致: 期待値={expected_turn}, 実際={session.current_turn}"
+            )
+
+        env = OthelloEnv()
+
+        # 2. バリデーション (合法手判定)
+        if not env.is_valid_move(session.current_board, expected_turn, row, col):
+            raise InvalidMoveError(f"不正な手です: ({row}, {col})")
+
+        # 3. 盤面の更新
+        new_board = env.apply_move(session.current_board, expected_turn, row, col)
+
+        # 4. ターンの更新
+        next_turn = env.change_turn(expected_turn)
+
+        # セッションの保存
+        session.current_board = new_board
+        session.current_turn = next_turn
+        session.save(update_fields=["current_board", "current_turn", "updated_at"])
+
+        return session
     except DatabaseError:
         raise
