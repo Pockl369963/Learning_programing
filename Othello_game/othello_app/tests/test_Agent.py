@@ -26,14 +26,24 @@ class TestAIPlayer:
     def test_get_observation_initial(
         self, agent: AIPlayer, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 初期盤面からDQN入力用のObservationが正しく生成されること。"""
+        """
+        [正常系] 初期盤面からDQN入力用のObservationが正しく生成されることを検証する。
+
+        Arrange:
+            初期盤面とAIPlayer(agent)を用意する。
+        Act:
+            黒番(先手)として _get_observation を実行する。
+        Assert:
+            - 出力テンソルのShapeが (3, 8, 8) であること。
+            - チャンネル0(自石)に黒石が2個、チャンネル1(相手石)に白石が2個配置されていること。
+            - チャンネル2(合法手)に正しい4箇所の合法手フラグが立っていること。
+        """
         # Act
         obs = agent._get_observation(
             initial_board, current_player=OthelloEnv.PLAYER_BLACK
         )
 
         # Assert
-        # 全体のShapeが (3, 8, 8) であること
         assert obs.shape == (3, 8, 8)
 
         # チャンネル0 (自分の石: 1) の確認
@@ -57,7 +67,17 @@ class TestAIPlayer:
     def test_get_observation_white(
         self, agent: AIPlayer, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 白番(後手)の場合、チャンネル0が白石、チャンネル1が黒石として反転生成されること。"""
+        """
+        [正常系] 白番(後手)の場合、チャンネル0が白石、チャンネル1が黒石として反転生成されることを検証する。
+
+        Arrange:
+            初期盤面とAIPlayer(agent)を用意する。
+        Act:
+            白番(後手)として _get_observation を実行する。
+        Assert:
+            - チャンネル0(自石)が白石、チャンネル1(相手石)が黒石として認識されていること。
+            - チャンネル2(合法手)が白番向けの正しい4箇所になっていること。
+        """
         # Act
         obs = agent._get_observation(
             initial_board, current_player=OthelloEnv.PLAYER_WHITE
@@ -84,19 +104,24 @@ class TestAIPlayer:
     def test_get_move_returns_valid_move(
         self, agent: AIPlayer, initial_board: List[List[int]]
     ) -> None:
-        """正常系: ネットワークの出力に関わらず、非合法手がマスクされて必ず合法手が選ばれること。"""
-        # Arrange
-        # ランダムな重みのモデルを使うため、Q値自体はデタラメになる。
-        # しかし、AIPlayer側のマスキング処理によって、確実に合法手が選択されるはず。
+        """
+        [正常系] ネットワークの出力に関わらず、非合法手がマスクされて必ず合法手が選ばれることを検証する。
 
-        # Act
+        Arrange:
+            ランダムな重みを持つAIPlayerと初期盤面を用意する。(Q値自体はデタラメになる)
+        Act:
+            get_move を実行して手を取得する。
+        Assert:
+            - Noneではなく、具体的な手が返却されること。
+            - 返却された手が実際の盤面において合法手であること。
+        """
+        # Arrange & Act
         move = agent.get_move(initial_board, current_player=OthelloEnv.PLAYER_BLACK)
 
         # Assert
         assert move is not None, "合法手が存在するのにNoneが返されました。"
         row, col = move
 
-        # 選ばれた手が本当に合法手であるか検証
         assert agent.env.is_valid_move(
             initial_board, OthelloEnv.PLAYER_BLACK, row, col
         ), (
@@ -104,14 +129,21 @@ class TestAIPlayer:
         )
 
     def test_get_move_no_valid_moves(self, agent: AIPlayer) -> None:
-        """正常系: 合法手がない場合はパスとなり、Noneを返すこと。"""
+        """
+        [正常系] 合法手がない場合はパスとなり、Noneを返すことを検証する。
+
+        Arrange:
+            相手(白番)にとって合法手が全くない盤面を用意する。
+        Act:
+            白番として get_move を実行する。
+        Assert:
+            - 返り値がNoneであること。
+        """
         # Arrange
-        # 1箇所を除いて全て黒で埋まった盤面（相手を裏返せない状態）
         board = [[1] * 8 for _ in range(8)]
         board[0][0] = 0
 
         # Act
-        # 白番(相手)のターン。空いている(0,0)に置いても裏返せる黒石がないので合法手は0。
         move = agent.get_move(board, current_player=OthelloEnv.PLAYER_WHITE)
 
         # Assert
@@ -126,22 +158,31 @@ class TestAIPlayer:
         mock_torch_load: MagicMock,
         mock_path_exists: MagicMock,
     ) -> None:
-        """正常系: model_pathが指定された場合、正しくロード処理(torch.load)が呼ばれること。"""
+        """
+        [正常系] model_pathが指定された場合、正しくロード処理(torch.load)が呼ばれることを検証する。
+
+        Arrange:
+            パス存在確認(os.path.exists)とモデルロード(torch.load)をモックし、正常にロードできる状態を作る。
+        Act:
+            model_pathを指定してAIPlayerを初期化する。
+        Assert:
+            - 指定したパスの存在確認が行われたこと。
+            - torch.load が正しいパスで呼ばれたこと。
+            - load_state_dict によってモデルの重みがネットワークに反映されたこと。
+        """
         # Arrange
         mock_path_exists.return_value = True
         mock_torch_load.return_value = {"online_net": "dummy_state_dict_data"}
         dummy_path = "dummy/path/to/best_model.pth"
 
         # Act
-        # モックによりファイルが存在すると判定され、ロード処理が走る
         agent = AIPlayer(model_path=dummy_path)
 
         # Assert
-        # 1. パスの存在確認が行われたか
         mock_path_exists.assert_called_once_with(dummy_path)
-        # 2. torch.load が正しいパスとデバイス指定で呼ばれたか
-        mock_torch_load.assert_called_once_with(dummy_path, map_location=agent.device)
-        # 3. ネットワークに辞書の 'online_net' の中身がロードされたか
+        mock_torch_load.assert_called_once_with(
+            dummy_path, map_location=agent.device, weights_only=True
+        )
         mock_load_state_dict.assert_called_once_with("dummy_state_dict_data")
 
     @patch("model.Agent.os.path.exists")
@@ -149,22 +190,29 @@ class TestAIPlayer:
     def test_init_load_failure_fallback(
         self, mock_torch_load: MagicMock, mock_path_exists: MagicMock
     ) -> None:
-        """異常系: torch.loadで例外が発生した場合、クラッシュせずにランダムな重みで初期化が継続されること。"""
+        """
+        [異常系] torch.loadで例外が発生した場合、クラッシュせずにランダムな重みで初期化が継続されることを検証する。
+
+        Arrange:
+            パスは存在するが、torch.load実行時に例外(RuntimeError)が発生するようにモックする。
+        Act:
+            model_pathを指定してAIPlayerを初期化する。
+        Assert:
+            - 例外によってクラッシュせず、初期化処理が完了すること。
+            - agentインスタンスとその内部のネットワーク(net)が正しく生成されていること。
+        """
         # Arrange
         mock_path_exists.return_value = True
-        # ロード中に例外が発生した状況をシミュレート
         mock_torch_load.side_effect = RuntimeError("Mocked corrupted file error")
         dummy_path = "dummy/path/to/corrupted_model.pth"
 
         # Act & Assert
         try:
-            # 例外が送出されず、キャッチされてインスタンス化が進むことを確認
             agent = AIPlayer(model_path=dummy_path)
         except Exception as e:
             pytest.fail(
                 f"ロード失敗時に例外がスローされ、アプリがクラッシュしました: {e}"
             )
 
-        # Agentと内部ネットワークが生成されていることを確認
         assert agent is not None
         assert agent.net is not None

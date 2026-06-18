@@ -9,7 +9,10 @@ from django.core.exceptions import ValidationError
 # ====================================================================
 
 
-def validate_board_format(value):
+from typing import Any
+
+
+def validate_board_format(value: Any) -> None:
     """
     盤面データが8x8の2次元配列（リスト）であることを検証するカスタムバリデータ
     テスト要件: 単なる文字列やシリアライズ不能なオブジェクトを弾く
@@ -61,7 +64,7 @@ class GameSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Session {self.id} - {self.user.username} ({self.status})"
 
 
@@ -82,5 +85,5 @@ class MatchHistory(models.Model):
     # タイムスタンプ
     played_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.user.username} - {self.result} vs {self.opponent_type}"

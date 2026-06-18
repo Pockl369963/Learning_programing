@@ -33,8 +33,17 @@ def test_gamesession_create_success(
     valid_user: User, initial_board: List[List[int]]
 ) -> None:
     """
-    1. 正常系: 正しいパラメータでGameSessionが正常に作成・保存されること。
+    [正常系] 正しいパラメータでGameSessionが正常に作成・保存されること。
     UUIDの自動生成や、DateTimeFieldの自動設定(auto_now/add)も検証する。
+
+    Arrange:
+        GameSessionの各フィールドに対して、正常なデータを用意する。
+    Act:
+        session.full_clean() でバリデーションを実行し、session.save() で保存する。
+    Assert:
+        - UUIDが生成されていること
+        - created_at, updated_atが自動でセットされていること
+        - user, statusなどが期待した値であること
     """
     session = GameSession(
         user=valid_user,
@@ -69,7 +78,15 @@ def test_gamesession_invalid_choices(
     valid_user: User, initial_board: List[List[int]], field: str, invalid_value: Any
 ) -> None:
     """
-    2. 異常系 (Choice制約): 定義外のChoices値が設定された場合、ValidationErrorが発生すること。
+    [異常系] 定義外のChoices値が設定された場合、ValidationErrorが発生すること。
+
+    Arrange:
+        正常なデータセットを用意し、対象のChoiceフィールドに定義外の値(invalid_value)をセットする。
+    Act:
+        session.full_clean() でバリデーションを実行する。
+    Assert:
+        - ValidationErrorが発生すること。
+        - エラーメッセージ内に該当フィールド名が含まれていること。
     """
     data: dict[str, Any] = {
         "user": valid_user,
@@ -91,7 +108,15 @@ def test_gamesession_invalid_choices(
 @pytest.mark.django_db
 def test_gamesession_null_constraints(initial_board: List[List[int]]) -> None:
     """
-    2. 異常系 (Null制約): 必須フィールド(user)が欠落している場合、ValidationErrorが発生すること。
+    [異常系] 必須フィールド(user)が欠落している場合、ValidationErrorが発生すること。
+
+    Arrange:
+        userフィールドを除いた状態でGameSessionを初期化する。
+    Act:
+        session.full_clean() でバリデーションを実行する。
+    Assert:
+        - ValidationErrorが発生すること。
+        - エラーメッセージ内に 'user' 関連のメッセージが含まれていること。
     """
     session = GameSession(
         opponent_type=GameSession.OpponentType.AI,
@@ -113,8 +138,15 @@ def test_gamesession_color_and_turn_boundary_validation(
     valid_user: User, initial_board: List[List[int]], invalid_val: int
 ) -> None:
     """
-    3. 境界値・データ型異常: user_color および current_turn に対して、
-    許容されない整数値を代入した際にバリデーションエラーになること。
+    [異常系] user_color および current_turn に対して、許容されない整数値を代入した際にバリデーションエラーになること。
+
+    Arrange:
+        user_color と current_turn にChoices定義外の整数値(invalid_val)をセットする。
+    Act:
+        session.full_clean() でバリデーションを実行する。
+    Assert:
+        - ValidationErrorが発生すること。
+        - エラーメッセージ内に 'user_color' および 'current_turn' が含まれていること。
     """
     session = GameSession(
         user=valid_user,
@@ -135,8 +167,15 @@ def test_gamesession_color_and_turn_boundary_validation(
 @pytest.mark.django_db
 def test_gamesession_invalid_current_board_type(valid_user: User) -> None:
     """
-    3. 境界値・データ型異常: current_board に対して不正な型
-    を代入した場合、適切に弾かれる挙動を確認する。
+    [異常系] current_board に対して不正な型(文字列など)を代入した場合、適切に弾かれること。
+
+    Arrange:
+        current_board に不正な型(文字列など)をセットしてGameSessionを初期化する。
+    Act:
+        session.full_clean() でカスタムバリデータを含めたバリデーションを実行する。
+    Assert:
+        - ValidationErrorが発生すること。
+        - エラーメッセージ内に 'current_board' が含まれていること。
     """
     session = GameSession(
         user=valid_user,
@@ -161,7 +200,15 @@ def test_gamesession_invalid_current_board_type(valid_user: User) -> None:
 @pytest.mark.django_db
 def test_matchhistory_create_success(valid_user: User) -> None:
     """
-    1. 正常系: 正しいパラメータでMatchHistoryが正常に作成・保存されること。
+    [正常系] 正しいパラメータでMatchHistoryが正常に作成・保存されること。
+
+    Arrange:
+        MatchHistoryに必要な正常なパラメータを用意する。
+    Act:
+        history.full_clean() でバリデーションを実行し、history.save() でDBに保存する。
+    Assert:
+        - idが生成されていること
+        - user, played_at, resultが期待した値であること
     """
     history = MatchHistory(
         user=valid_user,
@@ -189,8 +236,15 @@ def test_matchhistory_invalid_choices(
     valid_user: User, field: str, invalid_value: Any
 ) -> None:
     """
-    2. 異常系 (Choice制約): MatchHistoryにおける定義外のChoices値が
-    設定された場合、ValidationErrorが発生すること。
+    [異常系] MatchHistoryにおける定義外のChoices値が設定された場合、ValidationErrorが発生すること。
+
+    Arrange:
+        正常なデータセットを用意し、対象のフィールドに定義外の値をセットする。
+    Act:
+        history.full_clean() でバリデーションを実行する。
+    Assert:
+        - ValidationErrorが発生すること。
+        - エラーメッセージ内に該当フィールド名が含まれていること。
     """
     data: dict[str, Any] = {
         "user": valid_user,
@@ -209,8 +263,15 @@ def test_matchhistory_invalid_choices(
 @pytest.mark.django_db
 def test_matchhistory_null_constraints() -> None:
     """
-    2. 異常系 (Null制約): MatchHistoryにおいて必須フィールド(user)が
-    欠落している場合、ValidationErrorが発生すること。
+    [異常系] MatchHistoryにおいて必須フィールド(user)が欠落している場合、ValidationErrorが発生すること。
+
+    Arrange:
+        userフィールドを除いた状態でMatchHistoryを初期化する。
+    Act:
+        history.full_clean() でバリデーションを実行する。
+    Assert:
+        - ValidationErrorが発生すること。
+        - エラーメッセージ内に 'user' 関連のメッセージが含まれていること。
     """
     history = MatchHistory(
         opponent_type=GameSession.OpponentType.AI, result=MatchHistory.Result.DRAW

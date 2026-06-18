@@ -51,11 +51,16 @@ class TestOthelloServices:
 
     def test_start_game_black(self, test_user: User, mocker: MockerFixture) -> None:
         """
-        正常系: ゲーム開始時、ランダム選択でユーザーが先手(黒)になる場合。
+        [正常系] ゲーム開始時、ランダム選択でユーザーが先手(黒)になる場合を検証する。
 
-        Args:
-            test_user (User): テスト用ユーザー
-            mocker (MockerFixture): pytest-mockのMockerFixture
+        Arrange:
+            random.choice をモックし、必ず PLAYER_BLACK が選ばれるようにする。
+        Act:
+            start_game を実行し、新しいセッションを作成する。
+        Assert:
+            - 返されたセッションが指定したユーザーと対戦相手を持っていること。
+            - ステータスが PLAYING であること。
+            - ユーザーの色が PLAYER_BLACK であること。
         """
         # Arrange
         mocker.patch("othello_web.services.random.choice", return_value=PLAYER_BLACK)
@@ -73,11 +78,15 @@ class TestOthelloServices:
 
     def test_start_game_white(self, test_user: User, mocker: MockerFixture) -> None:
         """
-        正常系: ゲーム開始時、ランダム選択でユーザーが後手(白)になる場合。
+        [正常系] ゲーム開始時、ランダム選択でユーザーが後手(白)になる場合を検証する。
 
-        Args:
-            test_user (User): テスト用ユーザー
-            mocker (MockerFixture): pytest-mockのMockerFixture
+        Arrange:
+            random.choice をモックし、必ず PLAYER_WHITE が選ばれるようにする。
+        Act:
+            start_game を実行し、新しいセッションを作成する。
+        Assert:
+            - 返されたセッションのステータスが PLAYING であること。
+            - ユーザーの色が PLAYER_WHITE になっていること。
         """
         # Arrange
         mocker.patch("othello_web.services.random.choice", return_value=PLAYER_WHITE)
@@ -101,11 +110,15 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        正常系: 進行中のゲームがある場合、ステータスがabandonedになり敗北履歴が保存されること。
+        [正常系] 進行中のゲームがある場合、ステータスがabandonedになり敗北履歴が保存されること。
 
-        Args:
-            test_user (User): テスト用ユーザー
-            initial_board (List[List[int]]): 初期盤面
+        Arrange:
+            進行中(PLAYING)の GameSession を事前に作成しておく。
+        Act:
+            handle_abandoned_game を実行する。
+        Assert:
+            - セッションのステータスが ABANDONED に更新されていること。
+            - ユーザーに LOSS (敗北) の MatchHistory レコードが追加されていること。
         """
         # Arrange
         active_session: GameSession = GameSession.objects.create(
@@ -135,11 +148,16 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        異常系: 進行中のゲームがない場合、何も変更されずエラーも起きないこと。
+        [異常系] 進行中のゲームがない場合、何も変更されずエラーも起きないこと。
 
-        Args:
-            test_user (User): テスト用ユーザー
-            initial_board (List[List[int]]): 初期盤面
+        Arrange:
+            すでに終了した(FINISHED) GameSession のみを作成しておく。
+            実行前の履歴件数を記録する。
+        Act:
+            handle_abandoned_game を実行する。
+        Assert:
+            - エラーが発生しないこと。
+            - MatchHistoryの件数が実行前と変わっていないこと。
         """
         # Arrange
         GameSession.objects.create(
@@ -166,11 +184,14 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        正常系: すでに9件の履歴がある状態で1件追加し、合計10件になること。
+        [正常系] すでに9件(上限未満)の履歴がある状態で1件追加し、合計10件になること。
 
-        Args:
-            test_user (User): テスト用ユーザー
-            initial_board (List[List[int]]): 初期盤面
+        Arrange:
+            上限数(MAX_MATCH_HISTORY) - 1 件の MatchHistory と、終了済みのセッションを作成する。
+        Act:
+            save_match_history を実行して新しい結果を追加する。
+        Assert:
+            - ユーザーの MatchHistory が上限数に等しくなっていること。
         """
         # Arrange
         for _ in range(MatchHistory.MAX_MATCH_HISTORY - 1):
@@ -204,11 +225,16 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        境界値: すでに10件の履歴がある状態で1件追加した場合、最古のレコードが削除され、合計10件が維持されること。
+        [正常系] すでに10件(上限)の履歴がある状態で1件追加した場合、最古のレコードが削除され、合計10件が維持されること。
 
-        Args:
-            test_user (User): テスト用ユーザー
-            initial_board (List[List[int]]): 初期盤面
+        Arrange:
+            上限数(MAX_MATCH_HISTORY)の MatchHistory を作成し、最古のレコードのIDを記録する。
+        Act:
+            save_match_history を実行して新たな結果を追加する。
+        Assert:
+            - MatchHistory の全体数が上限数に維持されていること。
+            - 記録しておいた最古のレコードがDBから削除されていること。
+            - 最新のレコードが新たに追加されたものであること。
         """
         # Arrange
         histories: List[MatchHistory] = []
@@ -263,8 +289,15 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        正常系: 自分の進行中のゲームをサレンダー（投了）できること。
-        ステータスがFINISHEDになり、敗北(LOSS)履歴が保存される。
+        [正常系] 自分の進行中のゲームをサレンダー（投了）できること。
+
+        Arrange:
+            PLAYING状態の GameSession を作成する。
+        Act:
+            surrender_game を実行する。
+        Assert:
+            - セッションステータスが FINISHED になること。
+            - 敗北(LOSS)履歴が新しく保存されること。
         """
         # Arrange
         session: GameSession = GameSession.objects.create(
@@ -293,7 +326,14 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        異常系: すでに終了したゲームをサレンダーしようとするとValueErrorが発生すること。
+        [異常系] すでに終了したゲームをサレンダーしようとするとValueErrorが発生すること。
+
+        Arrange:
+            すでに終了(FINISHED)状態の GameSession を作成する。
+        Act:
+            surrender_game を実行する。
+        Assert:
+            - ValueErrorが発生し、適切なメッセージが含まれていること。
         """
         # Arrange
         session: GameSession = GameSession.objects.create(
@@ -315,7 +355,14 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        異常系: 他人のゲームセッションをサレンダーしようとした場合、例外（非存在エラーなど）が発生すること。
+        [異常系] 他人のゲームセッションをサレンダーしようとした場合、エラーが発生すること。
+
+        Arrange:
+            他ユーザーに紐づく PLAYING状態の GameSession を作成する。
+        Act:
+            対象セッションに対して自分(test_user)が surrender_game を実行する。
+        Assert:
+            - セッション取得に失敗し、例外(DoesNotExist等)が発生すること。
         """
         # Arrange
         other_user = User.objects.create_user(
@@ -331,7 +378,6 @@ class TestOthelloServices:
         )
 
         # Act & Assert
-        # 実装によってDoesNotExistやValueErrorが発生する想定。ここでは広めにキャッチするか、一般的なものを指定
         with pytest.raises(Exception):
             surrender_game(user=test_user, session_id=session.id)
 
@@ -343,7 +389,16 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        正常系: 1時間以上操作がないPLAYING状態のゲームをABANDONEDに変更し、LOSS履歴を作成すること。
+        [正常系] 1時間以上操作がないPLAYING状態のゲームをABANDONEDに変更し、LOSS履歴を作成すること。
+
+        Arrange:
+            2時間前に更新されたPLAYING状態のセッションと、30分前に更新されたセッションを作成する。
+        Act:
+            process_timeout_abandoned_games を実行する。
+        Assert:
+            - 処理件数として 1 が返ること。
+            - 2時間前のセッションは ABANDONED になり、LOSS履歴が作成されていること。
+            - 30分前のセッションは PLAYING のままであること。
         """
         from datetime import timedelta
         from django.utils import timezone
@@ -358,7 +413,6 @@ class TestOthelloServices:
             current_board=initial_board,
             current_turn=PLAYER_BLACK,
         )
-        # auto_now=True をバイパスして過去日時にする
         old_time = timezone.now() - timedelta(hours=2)
         GameSession.objects.filter(id=session_timeout.id).update(updated_at=old_time)
 
@@ -396,7 +450,16 @@ class TestOthelloServices:
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
         """
-        正常系: すでにFINISHEDやABANDONEDになっている古いゲームはタイムアウトの処理対象外となること。
+        [正常系] すでにFINISHEDやABANDONEDになっている古いゲームはタイムアウトの処理対象外となること。
+
+        Arrange:
+            2時間前に更新されたが、ステータスは FINISHED であるセッションを作成する。
+        Act:
+            process_timeout_abandoned_games を実行する。
+        Assert:
+            - 処理件数として 0 が返ること。
+            - セッションステータスが FINISHED のままであること。
+            - 余計な MatchHistory が作成されていないこと。
         """
         from datetime import timedelta
         from django.utils import timezone
@@ -435,7 +498,17 @@ class TestOthelloServices:
     def test_process_move_success(
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 自分のターンで正しい合法手を打った場合、盤面とターンが更新されること。"""
+        """
+        [正常系] 自分のターンで正しい合法手を打った場合、盤面とターンが更新されること。
+
+        Arrange:
+            PLAYING状態で黒番の GameSession を作成し、合法手(2, 3)を用意する。
+        Act:
+            process_move を実行する。
+        Assert:
+            - セッションの盤面の (2, 3) が PLAYER_BLACK に書き換わっていること。
+            - 次のターンが PLAYER_WHITE に変更されていること。
+        """
         # Arrange
         session: GameSession = GameSession.objects.create(
             user=test_user,
@@ -465,7 +538,17 @@ class TestOthelloServices:
     def test_process_move_turn_conflict(
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
-        """異常系(排他制御): 期待するターンと実際のターンが異なる場合、TurnConflictError(409相当)が発生すること。"""
+        """
+        [異常系(排他制御)] 期待するターンと実際のターンが異なる場合、TurnConflictError(409相当)が発生すること。
+
+        Arrange:
+            現在のターンがPLAYER_BLACKである GameSession を作成する。
+            期待するターンとして PLAYER_WHITE を指定する。
+        Act:
+            process_move を実行する。
+        Assert:
+            - TurnConflictError が発生すること。
+        """
         # Arrange
         session: GameSession = GameSession.objects.create(
             user=test_user,
@@ -491,7 +574,16 @@ class TestOthelloServices:
     def test_process_move_invalid_move(
         self, test_user: User, initial_board: List[List[int]]
     ) -> None:
-        """異常系(バリデーション): 不正な座標に置こうとした場合、InvalidMoveError(400相当)が発生すること。"""
+        """
+        [異常系(バリデーション)] 不正な座標に置こうとした場合、InvalidMoveError(400相当)が発生すること。
+
+        Arrange:
+            初期盤面の GameSession を作成し、合法手ではない座標 (0, 0) を用意する。
+        Act:
+            process_move を実行する。
+        Assert:
+            - InvalidMoveError が発生すること。
+        """
         # Arrange
         session: GameSession = GameSession.objects.create(
             user=test_user,

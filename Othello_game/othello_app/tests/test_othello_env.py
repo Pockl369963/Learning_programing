@@ -31,11 +31,6 @@ def mid_game_board() -> List[List[int]]:
     board[3][5] = 1
     board[4][3] = -1
     board[5][4] = 1
-    # 状態:
-    # (3, 3) = -1, (3, 4) = -1, (3, 5) = 1
-    # (4, 3) = -1
-    # (5, 4) = 1
-    # 黒(1)が(3, 2)に置くと、(3,3), (3,4) と (4,3) が裏返る
     return board
 
 
@@ -43,8 +38,6 @@ def mid_game_board() -> List[List[int]]:
 def pass_board() -> List[List[int]]:
     """一方のプレイヤーに合法手がない状態を提供するフィクスチャ。"""
     board = [[1] * 8 for _ in range(8)]
-    # 全て黒だが、一箇所だけ空き(0,0)にする。
-    # この状態では白は裏返せる石がないため合法手がない。
     board[0][0] = 0
     return board
 
@@ -53,21 +46,16 @@ def pass_board() -> List[List[int]]:
 def full_board() -> List[List[int]]:
     """石がすべて埋まった決着状態を提供するフィクスチャ。"""
     board = [[1] * 8 for _ in range(8)]
-    # 白が2枚、残りが黒の決着状態
     board[0][0], board[0][1] = -1, -1
     return board
 
 
 @pytest.fixture
 def star_board() -> List[List[int]]:
-    """全8方向の裏返しを検証するための「星型」盤面を提供するフィクスチャ。
-    中央(3, 3)に黒(1)を置くと、周囲8方向の白(-1)がすべて裏返る状態。
-    """
+    """全8方向の裏返しを検証するための「星型」盤面を提供するフィクスチャ。"""
     board = [[0] * 8 for _ in range(8)]
-    # 中央の周囲8マスに白(-1)
     for r, c in [(2, 2), (2, 3), (2, 4), (3, 2), (3, 4), (4, 2), (4, 3), (4, 4)]:
         board[r][c] = -1
-    # その外側8方向に黒(1)
     for r, c in [(1, 1), (1, 3), (1, 5), (3, 1), (3, 5), (5, 1), (5, 3), (5, 5)]:
         board[r][c] = 1
     return board
@@ -77,13 +65,9 @@ def star_board() -> List[List[int]]:
 def edge_board() -> List[List[int]]:
     """盤面の端（壁）での挙動を検証するためのフィクスチャ。"""
     board = [[0] * 8 for _ in range(8)]
-    # (0, 0) に空き、(0, 1) から (0, 7) まで白
-    # (0, 0) に黒を置いても、逆の端(0, 7) の外側は壁なので裏返らない
     for c in range(1, 8):
         board[0][c] = -1
 
-    # (7, 0)に黒、(7, 1)から(7, 6)まで白、(7, 7)に空き
-    # (7, 7) に黒を置けば、(7, 1) から (7, 6) までの白が裏返る
     board[7][0] = 1
     for c in range(1, 7):
         board[7][c] = -1
@@ -94,7 +78,18 @@ class TestGetInitialBoard:
     """get_initial_boardメソッドのテストスイート"""
 
     def test_get_initial_board(self, env: OthelloEnv) -> None:
-        """正常系: 初期盤面が正しく生成されること。"""
+        """
+        [正常系] 初期盤面が正しく生成されること。
+
+        Arrange:
+            OthelloEnvインスタンスを利用する。
+        Act:
+            get_initial_board を実行する。
+        Assert:
+            - 盤面が 8x8 のリストであること。
+            - 初期配置の4マス（中央）に正しく石が配置されていること。
+            - 残りの60マスが空(0)であること。
+        """
         # Arrange & Act
         board = env.get_initial_board()
 
@@ -106,7 +101,6 @@ class TestGetInitialBoard:
         assert board[3][4] == OthelloEnv.PLAYER_BLACK
         assert board[4][3] == OthelloEnv.PLAYER_BLACK
 
-        # 初期配置以外の場所はすべて空(0)であること
         empty_count = sum(row.count(OthelloEnv.EMPTY) for row in board)
         assert empty_count == 60
 
@@ -115,7 +109,16 @@ class TestValidateBoard:
     """_validate_boardメソッドのテストスイート"""
 
     def test_valid_board(self, env: OthelloEnv, initial_board: List[List[int]]) -> None:
-        """正常系: 正しい盤面がエラーなく通過すること。"""
+        """
+        [正常系] 正しい形式の盤面がエラーなく通過すること。
+
+        Arrange:
+            正しい形式の盤面(initial_board)を用意する。
+        Act:
+            _validate_board を実行する。
+        Assert:
+            - 例外が発生しないこと。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -140,7 +143,16 @@ class TestValidateBoard:
     def test_invalid_board(
         self, env: OthelloEnv, invalid_board: Any, expected_msg: str
     ) -> None:
-        """異常系: 不正な盤面データがValueErrorを送出すること。"""
+        """
+        [異常系] 不正な盤面データがValueErrorを送出すること。
+
+        Arrange:
+            リスト以外の型やサイズ違い、不正な値を含む盤面データを用意する。
+        Act:
+            _validate_board を実行する。
+        Assert:
+            - ValueErrorが発生し、適切なメッセージが含まれていること。
+        """
         # Arrange & Act & Assert
         with pytest.raises(ValueError, match=expected_msg):
             env._validate_board(invalid_board)
@@ -152,7 +164,16 @@ class TestGetFlippableDiscs:
     def test_flippable_discs_initial(
         self, env: OthelloEnv, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 初期盤面で黒が(2, 3)に置いたときに裏返せる石が取得できること。"""
+        """
+        [正常系] 初期盤面で黒が合法手に置いたときに裏返せる石が取得できること。
+
+        Arrange:
+            初期盤面を用意する。
+        Act:
+            黒番で (2, 3) の座標に対して _get_flippable_discs を実行する。
+        Assert:
+            - 1つの石 (3, 3) が裏返せる座標として取得できること。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -166,7 +187,16 @@ class TestGetFlippableDiscs:
     def test_flippable_discs_mid_game(
         self, env: OthelloEnv, mid_game_board: List[List[int]]
     ) -> None:
-        """正常系: 複雑な盤面で複数方向の裏返せる石が取得できること。"""
+        """
+        [正常系] 複雑な盤面で複数方向の裏返せる石が取得できること。
+
+        Arrange:
+            複数方向が裏返る mid_game_board を用意する。
+        Act:
+            黒番で (3, 2) の座標に対して _get_flippable_discs を実行する。
+        Assert:
+            - 横方向と斜め方向の計3つの石が裏返せる座標として取得できること。
+        """
         # Arrange
         board = copy.deepcopy(mid_game_board)
 
@@ -175,7 +205,6 @@ class TestGetFlippableDiscs:
 
         # Assert
         assert len(flippable) == 3
-        # 横方向 (3, 3), (3, 4) と 斜め方向 (4, 3) が裏返るはず
         assert (3, 3) in flippable
         assert (3, 4) in flippable
         assert (4, 3) in flippable
@@ -183,7 +212,16 @@ class TestGetFlippableDiscs:
     def test_flippable_discs_all_directions(
         self, env: OthelloEnv, star_board: List[List[int]]
     ) -> None:
-        """正常系: 星型盤面で全8方向の裏返せる石が正しく取得できること。"""
+        """
+        [正常系] 星型盤面で全8方向の裏返せる石が正しく取得できること。
+
+        Arrange:
+            全8方向の裏返しが発生する star_board を用意する。
+        Act:
+            黒番で中央 (3, 3) に対して _get_flippable_discs を実行する。
+        Assert:
+            - 周囲8方向すべての石の座標が取得できること。
+        """
         # Arrange
         board = copy.deepcopy(star_board)
 
@@ -199,12 +237,20 @@ class TestGetFlippableDiscs:
     def test_flippable_discs_edge_no_flip(
         self, env: OthelloEnv, edge_board: List[List[int]]
     ) -> None:
-        """異常系（エッジケース）: 相手の石が連続して壁に到達した場合、裏返せないこと。"""
+        """
+        [異常系（エッジケース）] 相手の石が連続して壁に到達した場合、裏返せないこと。
+
+        Arrange:
+            壁際に関する edge_board を用意する。
+        Act:
+            黒番で (0, 0) に対して _get_flippable_discs を実行する。
+        Assert:
+            - 自分の石で挟めていないため、裏返せる石として空のリストが返却されること。
+        """
         # Arrange
         board = copy.deepcopy(edge_board)
 
         # Act
-        # (0, 0) に黒を置くと右に白が続くが、右端は壁で黒石がない
         flippable = env._get_flippable_discs(board, OthelloEnv.PLAYER_BLACK, 0, 0)
 
         # Assert
@@ -213,12 +259,20 @@ class TestGetFlippableDiscs:
     def test_flippable_discs_edge_flip(
         self, env: OthelloEnv, edge_board: List[List[int]]
     ) -> None:
-        """正常系: 壁際に自分の石がある場合、壁までの石が正しく裏返せること。"""
+        """
+        [正常系] 壁際に自分の石がある場合、壁までの石が正しく裏返せること。
+
+        Arrange:
+            壁際に自分の石がある edge_board を用意する。
+        Act:
+            黒番で (7, 7) に対して _get_flippable_discs を実行する。
+        Assert:
+            - 壁の間にあるすべての相手の石の座標が取得できること。
+        """
         # Arrange
         board = copy.deepcopy(edge_board)
 
         # Act
-        # (7, 7) に黒を置くと、(7, 0)の黒石までの間の白(7, 1)〜(7, 6)が裏返る
         flippable = env._get_flippable_discs(board, OthelloEnv.PLAYER_BLACK, 7, 7)
 
         # Assert
@@ -245,7 +299,16 @@ class TestGetFlippableDiscs:
         row: int,
         col: int,
     ) -> None:
-        """異常系（エッジケース）: 無効な入力の場合、空のリストが返却されること。"""
+        """
+        [異常系] 無効な入力の場合、空のリストが返却されること。
+
+        Arrange:
+            盤面外の座標や、既に石がある座標を指定する。
+        Act:
+            _get_flippable_discs を実行する。
+        Assert:
+            - 裏返せる石なし（空のリスト）が返却されること。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -276,7 +339,16 @@ class TestIsValidMove:
         col: int,
         expected: bool,
     ) -> None:
-        """正常系: 合法手かどうかが正しく判定されること。"""
+        """
+        [正常系・異常系] 合法手かどうかが正しく判定されること。
+
+        Arrange:
+            初期盤面と、いくつかの座標（合法手、裏返せない場所、石がある場所）を用意する。
+        Act:
+            is_valid_move を実行する。
+        Assert:
+            - 期待される判定結果 (True/False) が返却されること。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -287,9 +359,17 @@ class TestIsValidMove:
         assert result is expected
 
     def test_is_valid_move_invalid_board(self, env: OthelloEnv) -> None:
-        """異常系: 不正な盤面の場合、例外が捕捉されてFalseが返ること。"""
-        # Arrange
-        # Act & Assert
+        """
+        [異常系] 不正な盤面の場合、例外が捕捉されてFalseが返ること。
+
+        Arrange:
+            文字列などの不正な型の盤面を用意する。
+        Act:
+            is_valid_move を実行する。
+        Assert:
+            - ValueErrorが捕捉され、安全に False が返却されること。
+        """
+        # Arrange & Act & Assert
         assert not env.is_valid_move("invalid_board", OthelloEnv.PLAYER_BLACK, 2, 3)  # type: ignore
 
 
@@ -299,18 +379,27 @@ class TestApplyMove:
     def test_apply_move_valid(
         self, env: OthelloEnv, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 合法手を打った場合、盤面が正しく更新されること。"""
+        """
+        [正常系] 合法手を打った場合、盤面が正しく更新されること。
+
+        Arrange:
+            初期盤面を用意し、元の盤面を変更しないか検証用にコピーしておく。
+        Act:
+            黒番で合法手 (2, 3) に対して apply_move を実行する。
+        Assert:
+            - 置いたマスと裏返ったマスの状態が PLAYER_BLACK になっていること。
+            - 元の盤面オブジェクト (board) が破壊的に変更されていないこと。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
-        original_board = copy.deepcopy(board)  # ミューテーション検証用
+        original_board = copy.deepcopy(board)
 
         # Act
         new_board = env.apply_move(board, OthelloEnv.PLAYER_BLACK, 2, 3)
 
         # Assert
         assert new_board[2][3] == OthelloEnv.PLAYER_BLACK
-        assert new_board[3][3] == OthelloEnv.PLAYER_BLACK  # 裏返った石
-        # 元の盤面が一切ミューテーションされていないことの完全な検証
+        assert new_board[3][3] == OthelloEnv.PLAYER_BLACK
         assert board == original_board
 
     @pytest.mark.parametrize(
@@ -330,7 +419,16 @@ class TestApplyMove:
         col: int,
         expected_msg: str,
     ) -> None:
-        """異常系: 無効な手を打とうとした場合、ValueErrorが送出されること。"""
+        """
+        [異常系] 無効な手を打とうとした場合、ValueErrorが送出されること。
+
+        Arrange:
+            初期盤面と、無効な座標（盤面外、既に石がある、裏返せない）を用意する。
+        Act:
+            apply_move を実行する。
+        Assert:
+            - ValueErrorが発生し、適切なメッセージが含まれていること。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -345,7 +443,16 @@ class TestHasValidMoves:
     def test_has_valid_moves_true(
         self, env: OthelloEnv, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 合法手がある場合Trueが返ること。"""
+        """
+        [正常系] 合法手がある場合Trueが返ること。
+
+        Arrange:
+            両プレイヤーに合法手が存在する初期盤面を用意する。
+        Act:
+            各プレイヤーに対して has_valid_moves を実行する。
+        Assert:
+            - どちらのプレイヤーについても True が返却されること。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -360,7 +467,16 @@ class TestHasValidMoves:
     def test_has_valid_moves_false(
         self, env: OthelloEnv, pass_board: List[List[int]]
     ) -> None:
-        """正常系: 合法手がない場合Falseが返ること。"""
+        """
+        [正常系] 合法手がない場合Falseが返ること。
+
+        Arrange:
+            白番に合法手が存在しない盤面 (pass_board) を用意する。
+        Act:
+            白番に対して has_valid_moves を実行する。
+        Assert:
+            - False が返却されること。
+        """
         # Arrange
         board = copy.deepcopy(pass_board)
 
@@ -384,7 +500,16 @@ class TestChangeTurn:
     def test_change_turn_valid(
         self, env: OthelloEnv, current: int, expected: int
     ) -> None:
-        """正常系: ターンが正しく切り替わること。"""
+        """
+        [正常系] ターンが正しく切り替わること。
+
+        Arrange:
+            現在のプレイヤーの色を用意する。
+        Act:
+            change_turn を実行する。
+        Assert:
+            - もう一方のプレイヤーの色が返却されること。
+        """
         # Arrange & Act
         next_turn = env.change_turn(current)
 
@@ -393,7 +518,16 @@ class TestChangeTurn:
 
     @pytest.mark.parametrize("invalid_player", [0, 2, -2, None])
     def test_change_turn_invalid(self, env: OthelloEnv, invalid_player: Any) -> None:
-        """異常系: 不正なプレイヤーが渡された場合ValueErrorが送出されること。"""
+        """
+        [異常系] 不正なプレイヤーが渡された場合ValueErrorが送出されること。
+
+        Arrange:
+            無効なプレイヤー値(0, 2, Noneなど)を用意する。
+        Act:
+            change_turn を実行する。
+        Assert:
+            - ValueErrorが発生し、適切なメッセージが含まれていること。
+        """
         # Arrange & Act & Assert
         with pytest.raises(
             ValueError, match=f"不正なプレイヤー値です: {invalid_player}"
@@ -407,7 +541,16 @@ class TestCalculateWinner:
     def test_calculate_winner_initial(
         self, env: OthelloEnv, initial_board: List[List[int]]
     ) -> None:
-        """正常系: 初期状態の勝敗判定が正しく行われること（引き分け扱い）。"""
+        """
+        [正常系] 初期状態の勝敗判定が正しく行われること（引き分け扱い）。
+
+        Arrange:
+            黒・白ともに同数(2個ずつ)の初期盤面を用意する。
+        Act:
+            calculate_winner を実行する。
+        Assert:
+            - 石の数が各2個で、勝者が EMPTY (引き分け) になっていること。
+        """
         # Arrange
         board = copy.deepcopy(initial_board)
 
@@ -420,7 +563,16 @@ class TestCalculateWinner:
     def test_calculate_winner_full_board(
         self, env: OthelloEnv, full_board: List[List[int]]
     ) -> None:
-        """正常系: 決着がついた状態の勝敗判定が正しく行われること（黒の勝利）。"""
+        """
+        [正常系] 決着がついた状態の勝敗判定が正しく行われること。
+
+        Arrange:
+            黒が多く白が少ない決着盤面 (full_board) を用意する。
+        Act:
+            calculate_winner を実行する。
+        Assert:
+            - 黒石、白石の数が正しくカウントされ、勝者が PLAYER_BLACK であること。
+        """
         # Arrange
         board = copy.deepcopy(full_board)
 
@@ -431,10 +583,19 @@ class TestCalculateWinner:
         assert result == {"black": 62, "white": 2, "winner": OthelloEnv.PLAYER_BLACK}
 
     def test_calculate_winner_white_win(self, env: OthelloEnv) -> None:
-        """正常系: 白が勝利するパターンの勝敗判定が正しく行われること。"""
+        """
+        [正常系] 白が勝利するパターンの勝敗判定が正しく行われること。
+
+        Arrange:
+            白石が多く黒石が少ない盤面を用意する。
+        Act:
+            calculate_winner を実行する。
+        Assert:
+            - 白石の数が多く、勝者が PLAYER_WHITE であること。
+        """
         # Arrange
         board = [[-1] * 8 for _ in range(8)]
-        board[0][0] = 1  # 黒1枚、白63枚
+        board[0][0] = 1
 
         # Act
         result = env.calculate_winner(board)
