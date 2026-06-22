@@ -263,3 +263,15 @@ class UserHistoryView(LoginRequiredMixin, View):
         except Exception:
             logger.exception("ユーザー履歴取得処理中にエラーが発生しました")
             return JsonResponse({"error": "内部サーバーエラー"}, status=500)
+
+
+class TestCSRFView(View):
+    """
+    CSRFテスト用API
+    POST /api/test-csrf/
+    """
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        return JsonResponse(
+            {"message": "CSRF Token is valid! Ping-Pong successful."}, status=200
+        )
