@@ -1,0 +1,36 @@
+{% load django_vite %}
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Othello Game</title>
+    
+    <!-- 開発サーバー(Vite)との通信用HMRクライアント -->
+    {% vite_hmr_client %}
+    
+    <!-- Viteでビルド・管理されるメインJS(TailwindCSSもここで読み込まれます) -->
+    {% vite_asset 'src/main.js' %}
+</head>
+<body class="bg-gray-100 text-gray-900">
+    <!-- ここにページごとのコンテンツが入るブロックなどを定義します -->
+    <div class="container mx-auto p-4">
+        <h1 class="text-4xl font-bold text-blue-500 underline">Vite + Tailwind 連携成功！</h1>
+        
+        <!-- CSRF Ping-Pong テスト用UI -->
+        <div class="mt-8 p-4 bg-white shadow rounded-lg border border-gray-200">
+            <h2 class="text-2xl font-semibold mb-4">CSRF Ping-Pong テスト</h2>
+            <button id="csrf-test-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                DjangoへPOSTリクエストを送信
+            </button>
+            <div id="csrf-test-result" class="mt-4 p-3 bg-gray-50 rounded text-sm font-mono text-gray-700 min-h-12">
+                結果がここに表示されます...
+            </div>
+        </div>
+
+        {% block content %}
+        {% endblock content %}
+    </div>
+</body>
+</html>
